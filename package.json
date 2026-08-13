@@ -1,0 +1,9 @@
+{
+  "name": "incidentflow",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/*"
+  ]
+}
