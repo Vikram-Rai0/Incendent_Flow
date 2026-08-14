@@ -1,0 +1,119 @@
+// apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  RESPONDER
+}
+
+enum IncidentStatus {
+  DETECTED
+  ACKNOWLEDGED
+  INVESTIGATING
+  IDENTIFIED
+  MITIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum Severity {
+  SEV1
+  SEV2
+  SEV3
+  SEV4
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(RESPONDER)
+  tokenVersion Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+model Incident {
+  id           String         @id @default(uuid())
+  title        String
+  description  String
+  severity     Severity
+  status       IncidentStatus @default(DETECTED)
+  commanderId  String?
+  createdBy    String
+  createdAt    DateTime       @default(now())
+  resolvedAt   DateTime?
+  tasks        Task[]
+  responders   IncidentResponder[]
+  comments     Comment[]
+  decisions    Decision[]
+  timelineEvents TimelineEvent[]
+}
+
+
+enum TaskStatus {
+  UNCLAIMED
+  CLAIMED
+  COMPLETED
+}
+
+model Task {
+  id         String     @id @default(uuid())
+  incidentId String
+  incident   Incident   @relation(fields: [incidentId], references: [id])
+  title      String
+  status     TaskStatus @default(UNCLAIMED)
+  claimedBy  String?
+  claimedAt  DateTime?
+  completedAt DateTime?
+  version    Int        @default(0)
+  createdAt  DateTime   @default(now())
+}
+
+
+
+model IncidentResponder {
+  incidentId String
+  incident   Incident  @relation(fields: [incidentId], references: [id])
+  userId     String
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+
+  @@id([incidentId, userId])
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id])
+  userId     String
+  body       String
+  createdAt  DateTime @default(now())
+}
+
+model Decision {
+  id           String   @id @default(uuid())
+  incidentId   String
+  incident     Incident @relation(fields: [incidentId], references: [id])
+  madeBy       String
+  decisionText String
+  reason       String
+  status       String   @default("APPROVED")
+  createdAt    DateTime @default(now())
+}
+
+model TimelineEvent {
+  id         String   @id @default(uuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id])
+  type       String
+  actorId    String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+}
