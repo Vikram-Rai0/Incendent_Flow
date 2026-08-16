@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 
 import { claimTaskHandler } from "./modules/tasks/tasks.controller";
+import { registerHandler } from "./modules/auth/auth.controller";
 
 dotenv.config();
 
@@ -24,3 +25,4 @@ app.listen(PORT, () => {
 });
 
 app.post("/tasks/:taskId/claim", claimTaskHandler);
+app.post("/auth/register", registerHandler);
