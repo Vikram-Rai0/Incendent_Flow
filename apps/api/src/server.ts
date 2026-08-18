@@ -2,9 +2,9 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
-
 import { claimTaskHandler } from "./modules/tasks/tasks.controller";
-import { registerHandler } from "./modules/auth/auth.controller";
+import { registerHandler, loginHandler } from "./modules/auth/auth.controller";
+import { requireAuth } from "./middleware/auth.middleware";
 
 dotenv.config();
 
@@ -14,15 +14,15 @@ app.use(cors({ origin: process.env.CLIENT_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.status(200).json({ status: "OK" });
 });
 
-const PORT = process.env.PORT || 3000;
+app.post("/auth/register", registerHandler);
+app.post("/auth/login", loginHandler);
+app.post("/tasks/:taskId/claim", requireAuth, claimTaskHandler);
 
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Api listening on port ${PORT}`);
 });
-
-app.post("/tasks/:taskId/claim", claimTaskHandler);
-app.post("/auth/register", registerHandler);
