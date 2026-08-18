@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { prisma } from "../../db/prisma";
+import { signAccessToken, signRefreshToken } from "./tokens";
 
 const SALT_ROUNDS = 12;
 
@@ -24,4 +25,30 @@ export async function registerUser(email: string, password: string, name: string
     }
     throw err;
   }
+}
+
+
+export async function loginUser(email: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    return { outcome: "invalid" as const };
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) {
+    return { outcome: "invalid" as const };
+  }
+
+  const accessToken = signAccessToken({
+    userId: user.id,
+    role: user.role,
+    tokenVersion: user.tokenVersion,
+  });
+  const refreshToken = signRefreshToken({
+    userId: user.id,
+    tokenVersion: user.tokenVersion,
+  });
+
+  return { outcome: "success" as const, accessToken, refreshToken, user };
 }
