@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { prisma } from "../../db/prisma";
 import { signAccessToken, signRefreshToken } from "./tokens";
+import { verifyRefreshToken } from "./tokens";
 
 const SALT_ROUNDS = 12;
 
@@ -51,4 +52,63 @@ export async function loginUser(email: string, password: string) {
   });
 
   return { outcome: "success" as const, accessToken, refreshToken, user };
+}
+
+
+
+// Receive refresh token
+//         ↓
+// Verify JWT
+//         ↓
+// Is token valid?
+//    ↓             ↓
+//   No            Yes
+//    ↓             ↓
+// invalid       Get user ID
+//                   ↓
+//              Find user
+//                   ↓
+//           Does user exist?
+//             ↓          ↓
+//            No         Yes
+//             ↓          ↓
+//          invalid   Compare tokenVersion
+//                        ↓
+//                 Does it match?
+//                   ↓         ↓
+//                  No        Yes
+//                   ↓         ↓
+//                invalid   Create new
+//                          access token
+//                             ↓
+//                          success
+
+export async function refreshAccessToken(refreshToken: string) {
+  try {
+    const payload = verifyRefreshToken(refreshToken);
+
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+
+    if (!user || user.tokenVersion !== payload.tokenVersion) {
+      return { outcome: "invalid" as const };
+    }
+
+    const accessToken = signAccessToken({
+      userId: user.id,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+
+    return { outcome: "success" as const, accessToken, user };
+  } catch {
+    return { outcome: "invalid" as const };
+  }
+}
+
+
+export async function logoutUser(userId: string) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
 }
