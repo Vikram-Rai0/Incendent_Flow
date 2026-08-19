@@ -5,6 +5,9 @@ import { registerUser } from "./auth.service";
 import { loginSchema } from "./auth.schemas";
 import { loginUser } from "./auth.service";
 
+import { refreshAccessToken, logoutUser } from "./auth.service";
+import { verifyRefreshToken } from "./tokens";
+
 export async function registerHandler(req: Request, res: Response) {
   const parsed = registerSchema.safeParse(req.body);
 
@@ -57,4 +60,40 @@ export async function loginHandler(req: Request, res: Response) {
   return res
     .status(200)
     .json({ accessToken: result.accessToken, user: safeUser });
+}
+
+
+
+
+export async function refreshHandler(req: Request, res: Response) {
+  const refreshToken = req.cookies?.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({ error: "No refresh token" });
+  }
+
+  const result = await refreshAccessToken(refreshToken);
+
+  if (result.outcome === "invalid") {
+    return res.status(401).json({ error: "Invalid or expired refresh token" });
+  }
+
+  const { passwordHash, ...safeUser } = result.user;
+  return res.status(200).json({ accessToken: result.accessToken, user: safeUser });
+}
+
+export async function logoutHandler(req: Request, res: Response) {
+  // Bump tokenVersion — invalidates all existing access tokens
+  if (req.user?.id) {
+    await logoutUser(req.user.id);
+  }
+
+  // Clear the refresh cookie
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
+
+  return res.status(200).json({ message: "Logged out" });
 }
