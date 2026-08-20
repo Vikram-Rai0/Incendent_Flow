@@ -3,9 +3,17 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { claimTaskHandler } from "./modules/tasks/tasks.controller";
-import { registerHandler, loginHandler ,refreshHandler, logoutHandler} from "./modules/auth/auth.controller";
+import { registerHandler, loginHandler, refreshHandler, logoutHandler } from "./modules/auth/auth.controller";
 import { requireAuth } from "./middleware/auth.middleware";
 import { prisma } from "./db/prisma";
+
+
+import {
+  createIncidentHandler,
+  getIncidentHandler,
+  transitionIncidentHandler,
+} from "./modules/incidents/incidient.controller";
+
 
 
 
@@ -27,6 +35,9 @@ app.post("/tasks/:taskId/claim", requireAuth, claimTaskHandler);
 app.post("/auth/refresh", refreshHandler);
 app.post("/auth/logout", requireAuth, logoutHandler);
 
+app.post("/incidents", requireAuth, createIncidentHandler);
+app.get("/incidents/:incidentId", requireAuth, getIncidentHandler);
+app.patch("/incidents/:incidentId/status", requireAuth, transitionIncidentHandler);
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Api listening on port ${PORT}`);
