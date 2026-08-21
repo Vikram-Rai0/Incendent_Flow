@@ -1,9 +1,14 @@
 import { Request, Response } from "express";
 import { IncidentStatus, Severity } from "@prisma/client";
 import {
-    createIncident,
-    getIncident,
-    transitionIncident,
+  createIncident,
+  getIncident,
+  transitionIncident,
+  joinIncident,
+  addComment,
+  addDecision,
+  listIncidents,
+  createTask,
 } from "./incidents.service";
 
 export async function createIncidentHandler(req: Request, res: Response) {
@@ -67,4 +72,41 @@ export async function transitionIncidentHandler(req: Request, res: Response) {
     }
 
     return res.status(200).json({ incident: result.incident });
+}
+
+
+
+export async function joinIncidentHandler(req: Request, res: Response) {
+  const result = await joinIncident(String(req.params.incidentId), req.user!.id);
+  if (result.outcome === "not_found") return res.status(404).json({ error: "Incident not found" });
+  return res.status(200).json({ message: "Joined incident" });
+}
+
+export async function addCommentHandler(req: Request, res: Response) {
+  const { body } = req.body;
+  if (!body) return res.status(400).json({ error: "body is required" });
+  const result = await addComment(String(req.params.incidentId), req.user!.id, body);
+  if (result.outcome === "not_found") return res.status(404).json({ error: "Incident not found" });
+  return res.status(201).json({ comment: result.comment });
+}
+
+export async function addDecisionHandler(req: Request, res: Response) {
+  const { decisionText, reason } = req.body;
+  if (!decisionText || !reason) return res.status(400).json({ error: "decisionText and reason are required" });
+  const result = await addDecision(String(req.params.incidentId), req.user!.id, decisionText, reason);
+  if (result.outcome === "not_found") return res.status(404).json({ error: "Incident not found" });
+  return res.status(201).json({ decision: result.decision });
+}
+
+export async function listIncidentsHandler(_req: Request, res: Response) {
+  const incidents = await listIncidents();
+  return res.status(200).json({ incidents });
+}
+
+export async function createTaskHandler(req: Request, res: Response) {
+  const { title } = req.body;
+  if (!title) return res.status(400).json({ error: "title is required" });
+  const result = await createTask(String(req.params.incidentId), title);
+  if (result.outcome === "not_found") return res.status(404).json({ error: "Incident not found" });
+  return res.status(201).json({ task: result.task });
 }
