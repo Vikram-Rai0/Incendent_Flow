@@ -12,7 +12,13 @@ import {
   createIncidentHandler,
   getIncidentHandler,
   transitionIncidentHandler,
-} from "./modules/incidents/incidient.controller";
+  joinIncidentHandler,
+  addCommentHandler,
+  addDecisionHandler,
+  listIncidentsHandler,
+  createTaskHandler,
+} from "./modules/incidents/incidents.controller";
+
 
 
 
@@ -35,9 +41,15 @@ app.post("/tasks/:taskId/claim", requireAuth, claimTaskHandler);
 app.post("/auth/refresh", refreshHandler);
 app.post("/auth/logout", requireAuth, logoutHandler);
 
+
+app.get("/incidents", requireAuth, listIncidentsHandler);
 app.post("/incidents", requireAuth, createIncidentHandler);
 app.get("/incidents/:incidentId", requireAuth, getIncidentHandler);
 app.patch("/incidents/:incidentId/status", requireAuth, transitionIncidentHandler);
+app.post("/incidents/:incidentId/join", requireAuth, joinIncidentHandler);
+app.post("/incidents/:incidentId/comments", requireAuth, addCommentHandler);
+app.post("/incidents/:incidentId/decisions", requireAuth, addDecisionHandler);
+app.post("/incidents/:incidentId/tasks", requireAuth, createTaskHandler);
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Api listening on port ${PORT}`);
