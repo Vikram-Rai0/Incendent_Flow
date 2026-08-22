@@ -1,6 +1,7 @@
 import { IncidentStatus, Severity } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { isValidTransition, getAllowedTransitions } from "./incident.statemachine";
+import { broadcastToIncident } from "../../realtime/broadcaster";
 
 export async function createIncident(
   title: string,
@@ -12,7 +13,6 @@ export async function createIncident(
     data: { title, description, severity, createdBy, status: "DETECTED" },
   });
 
-  // First timeline event - automatic, no user action needed
   await prisma.timelineEvent.create({
     data: {
       incidentId: incident.id,
@@ -21,6 +21,8 @@ export async function createIncident(
       payload: { title, severity },
     },
   });
+
+  broadcastToIncident(incident.id, "incident:created", { incident });
 
   return incident;
 }
@@ -50,7 +52,6 @@ export async function transitionIncident(
   toStatus: IncidentStatus,
   actorId: string
 ) {
-  // Read current status first
   const incident = await prisma.incident.findUnique({
     where: { id: incidentId },
   });
@@ -68,7 +69,6 @@ export async function transitionIncident(
     };
   }
 
-  // Valid transition - update status and write timeline event atomically
   const [updated] = await prisma.$transaction([
     prisma.incident.update({
       where: { id: incidentId },
@@ -87,18 +87,22 @@ export async function transitionIncident(
     }),
   ]);
 
+  broadcastToIncident(incidentId, "incident:status_changed", {
+    incidentId,
+    status: toStatus,
+    actorId,
+  });
+
   return { outcome: "success" as const, incident: updated };
 }
-
 
 export async function joinIncident(incidentId: string, userId: string) {
   const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
   if (!incident) return { outcome: "not_found" as const };
 
-  // upsert prevents duplicate responder rows
   await prisma.incidentResponder.upsert({
     where: { incidentId_userId: { incidentId, userId } },
-    update: { leftAt: null }, // rejoining clears leftAt
+    update: { leftAt: null },
     create: { incidentId, userId },
   });
 
@@ -111,6 +115,8 @@ export async function joinIncident(incidentId: string, userId: string) {
     },
   });
 
+  broadcastToIncident(incidentId, "responder:joined", { userId });
+
   return { outcome: "success" as const };
 }
 
@@ -121,6 +127,8 @@ export async function addComment(incidentId: string, userId: string, body: strin
   const comment = await prisma.comment.create({
     data: { incidentId, userId, body },
   });
+
+  broadcastToIncident(incidentId, "comment:created", { comment });
 
   return { outcome: "success" as const, comment };
 }
@@ -146,6 +154,8 @@ export async function addDecision(
       payload: { decisionText },
     },
   });
+
+  broadcastToIncident(incidentId, "decision:created", { decision });
 
   return { outcome: "success" as const, decision };
 }
@@ -173,6 +183,8 @@ export async function createTask(incidentId: string, title: string) {
       payload: { title },
     },
   });
+
+  broadcastToIncident(incidentId, "task:created", { task });
 
   return { outcome: "success" as const, task };
 }
