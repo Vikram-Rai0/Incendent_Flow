@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../db/prisma";
 import { claimTask } from "./tasks.service";
-import { broadcastToIncident } from "../../realtime/broadcaster";
+import { broadcastToIncident } from "../../realtime/broadcaster"
 
 export async function claimTaskHandler(req: Request, res: Response) {
   const { taskId } = req.params;
