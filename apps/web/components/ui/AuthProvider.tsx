@@ -1,4 +1,3 @@
-// components/ui/AuthProvider.tsx
 // Wraps the entire app
 // On every page load, tries to silently restore the session
 // using the refresh token cookie from the backend

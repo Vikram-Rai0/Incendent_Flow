@@ -7,6 +7,9 @@ import { getIncident } from "../modules/incidents/incidents.service";
 interface AuthenticatedSocket extends Socket {
   userId: string;
   userName: string;
+
+
+
   role: string;
 }
 

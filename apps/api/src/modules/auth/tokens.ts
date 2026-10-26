@@ -1,5 +1,4 @@
 
-
 import jwt from "jsonwebtoken";
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET!;
@@ -12,7 +11,7 @@ export interface AccessTokenPayload {
 }
 
 export function signAccessToken(payload: AccessTokenPayload) {
-    return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "15m" });
+    return jwt.sign(payload, ACCESS_SECRET, { expiresIn: "2H" });
 }
 
 export function signRefreshToken(payload: { userId: string; tokenVersion: number }) {
