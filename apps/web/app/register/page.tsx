@@ -5,6 +5,13 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
+import AuthShell, {
+  errorBoxClass,
+  inputClass,
+  labelClass,
+  primaryButtonClass,
+} from "@/components/auth/authShell";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -14,6 +21,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false); // visual toggle only
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,86 +39,96 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <AuthShell
+      title="Create your workspace account"
+      subtitle="Get started in under a minute."
+      activeTab="signup"
+    >
+      {error && (
+        <div role="alert" className={errorBoxClass}>
+          {error}
+        </div>
+      )}
 
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">IncidentFlow</h1>
-          <p className="text-gray-400 mt-2 text-sm">Create your account</p>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5 mt-8">
+        <div className="space-y-1">
+          <label htmlFor="name" className={labelClass}>
+            Full name
+          </label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Alex Johnson"
+            autoComplete="name"
+            required
+            className={inputClass}
+          />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
+        <div className="space-y-1">
+          <label htmlFor="email" className={labelClass}>
+            Work email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            autoComplete="email"
+            required
+            className={inputClass}
+          />
+        </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-950 border border-red-800 rounded text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Full name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Alex Johnson"
-                required
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                required
-                minLength={8}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
+        <div className="space-y-1">
+          <label htmlFor="password" className={labelClass}>
+            Password
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              className={`${inputClass} pr-10`}
+            />
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
-
-          </form>
+          </div>
         </div>
 
-        <p className="text-center text-gray-500 text-sm mt-4">
-          Already have an account?{" "}
-          <Link href="/login" className="text-blue-400 hover:text-blue-300">
-            Sign in
-          </Link>
-        </p>
+        <button
+          type="submit"
+          disabled={loading}
+          className={`${primaryButtonClass} mt-0.5`}
+        >
+          {loading ? "Creating account..." : "Create account"}
+        </button>
+      </form>
 
-      </div>
-    </div>
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Already have an account?{" "}
+        <Link href="/login" className="text-primary hover:text-primary/80">
+          Sign in
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
