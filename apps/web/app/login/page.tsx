@@ -5,6 +5,13 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
+import AuthShell, {
+  errorBoxClass,
+  inputClass,
+  labelClass,
+  primaryButtonClass,
+} from "@/components/auth/authShell";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -16,6 +23,7 @@ export default function LoginPage() {
   // UI states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false); // visual toggle only
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); // prevent browser's default form submission
@@ -34,78 +42,90 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <AuthShell
+      title="Sign in to your workspace"
+      subtitle="Welcome back. Enter your details below."
+      activeTab="signin"
+    >
+      {/* Error message */}
+      {error && (
+        <div role="alert" className={errorBoxClass}>
+          {error}
+        </div>
+      )}
 
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">IncidentFlow</h1>
-          <p className="text-gray-400 mt-2 text-sm">Sign in to your account</p>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5 mt-8">
+        {/* Email field */}
+        <div className="space-y-1">
+          <label htmlFor="email" className={labelClass}>
+            Work email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            autoComplete="email"
+            required
+            className={inputClass}
+          />
         </div>
 
-        {/* Card */}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-
-          {/* Error message */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-950 border border-red-800 rounded text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-
-            {/* Email field */}
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            {/* Password field */}
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            {/* Submit button */}
+        {/* Password field */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label htmlFor="password" className={labelClass}>
+              Password
+            </label>
+            {/* No reset-password route exists yet, so this is a non-navigating placeholder */}
+            <span className="cursor-default text-xs text-primary">
+              Forgot password?
+            </span>
+          </div>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+              className={`${inputClass} pr-10`}
+            />
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
             >
-              {loading ? "Signing in..." : "Sign in"}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
-
-          </form>
+          </div>
         </div>
 
-        {/* Link to register */}
-        <p className="text-center text-gray-500 text-sm mt-4">
-          Dont have an account?{" "}
-          <Link href="/register" className="text-blue-400 hover:text-blue-300">
-            Create one
-          </Link>
-        </p>
+        {/* Submit button */}
+        <button
+          type="submit"
+          disabled={loading}
+          className={`${primaryButtonClass} mt-0.5`}
+        >
+          {loading ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
 
-      </div>
-    </div>
+      {/* Link to register */}
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        New to IncidentFlow?{" "}
+        <Link href="/register" className="text-primary hover:text-primary/80">
+          Create an account
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
