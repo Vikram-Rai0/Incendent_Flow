@@ -1,4 +1,3 @@
-// lib/api.ts
 // Every call to our backend goes through this file
 // No component ever calls fetch() directly
 
@@ -124,7 +123,10 @@ export const tasksApi = {
 };
 
 // ─── Types (matching the Prisma schema exactly) ────────────────
-
+export interface ActorInfo {
+    name: string;
+    role: string; // "Incident Commander" | "Admin" | "Responder"
+}
 export interface User {
     id: string;
     email: string;
@@ -177,6 +179,7 @@ export interface Comment {
     userId: string;
     body: string;
     createdAt: string;
+    author?: ActorInfo | null;
 }
 
 export interface Decision {
@@ -187,6 +190,7 @@ export interface Decision {
     reason: string;
     status: string;
     createdAt: string;
+    author?: ActorInfo | null;
 }
 
 export interface TimelineEvent {
@@ -196,8 +200,8 @@ export interface TimelineEvent {
     actorId: string | null;
     payload: Record<string, unknown> | null;
     createdAt: string;
+    actor?: ActorInfo | null;
 }
-
 export interface Responder {
     incidentId: string;
     userId: string;
