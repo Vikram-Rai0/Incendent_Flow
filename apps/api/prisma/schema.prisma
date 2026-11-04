@@ -35,6 +35,8 @@ model User {
   passwordHash String
   name         String
   role         Role     @default(RESPONDER)
+  timelineEvents TimelineEvent[]
+  incidentResponders IncidentResponder[]
   tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
 }
@@ -82,6 +84,7 @@ model IncidentResponder {
   incidentId String
   incident   Incident  @relation(fields: [incidentId], references: [id])
   userId     String
+  user       User      @relation(fields: [userId], references: [id])   // NEW
   joinedAt   DateTime  @default(now())
   leftAt     DateTime?
 
@@ -114,6 +117,7 @@ model TimelineEvent {
   incident   Incident @relation(fields: [incidentId], references: [id])
   type       String
   actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])  // NEW
   payload    Json?
   createdAt  DateTime @default(now())
 }
