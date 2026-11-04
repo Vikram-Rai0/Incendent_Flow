@@ -23,7 +23,7 @@ export function useAuth() {
   async function login(email: string, password: string) {
     const result = await authApi.login(email, password);
     setAuth(result.user, result.accessToken);
-    router.push("/incidents");
+    router.push("/dashboard");
   }
 
   // Register a new account then immediately log in
@@ -31,7 +31,7 @@ export function useAuth() {
     await authApi.register(email, password, name);
     const result = await authApi.login(email, password);
     setAuth(result.user, result.accessToken);
-    router.push("/incidents");
+    router.push("/dashboard");
   }
 
   // Log the user out
