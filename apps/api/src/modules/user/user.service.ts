@@ -1,10 +1,15 @@
+import { prisma } from "../../db/prisma";
 
-export function getAllUsers(id:string){
-    const uid = id;
-   if(!uid){
+export async function getAllUsers(id: string) {
+  if (!id) {
     return null;
-   }
-   const result = prisma.users.getAllusers(data);
-   return result;
- 
+  }
+
+  const result = await prisma.user.findUnique({
+    where: {
+      id: id,
+    },
+  });
+
+  return result;
 }
