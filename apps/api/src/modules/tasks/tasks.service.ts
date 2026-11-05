@@ -25,3 +25,17 @@ export async function claimTask(taskId: string, userId: string) {
 
   return result.count; // 1 = you won the race, 0 = you lost it
 }
+
+// Same atomic pattern as claimTask. The WHERE clause also checks WHO owns it,
+// so only the person who claimed a task can complete it.
+export async function completeTask(taskId: string, userId: string) {
+  const result = await prisma.task.updateMany({
+    where: { id: taskId, status: "CLAIMED", claimedBy: userId },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      version: { increment: 1 },
+    },
+  });
+  return result.count; // 1 = completed, 0 = not yours / not claimed / already done
+}
