@@ -1,22 +1,23 @@
+// socket.handlers.ts
+// Realtime entry point: authenticates every socket, then manages incident rooms.
+
 import { Server, Socket } from "socket.io";
 import { verifyAccessToken } from "../modules/auth/tokens";
 import { prisma } from "../db/prisma";
 import { getIncident } from "../modules/incidents/incidents.service";
+import { canAccessIncident } from "../modules/incidents/access";
 
 // Extend Socket type to carry our user identity
 interface AuthenticatedSocket extends Socket {
   userId: string;
   userName: string;
-
-
-
   role: string;
 }
 
 export function registerSocketHandlers(io: Server) {
-
-  // Auth middleware - runs before any connection is established
-  // This is the WS equivalent of requireAuth - reject before joining any room
+  // ── Connection-level auth ────────────────────────────────────
+  // Runs once per connection, before the socket can do anything.
+  // This is the WebSocket equivalent of requireAuth.
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -24,16 +25,20 @@ export function registerSocketHandlers(io: Server) {
 
       const payload = verifyAccessToken(token);
 
-      // Verify tokenVersion - same check as REST middleware
+      // Same tokenVersion check as the REST middleware
       const user = await prisma.user.findUnique({ where: { id: payload.userId } });
       if (!user || user.tokenVersion !== payload.tokenVersion) {
         return next(new Error("Session no longer valid"));
       }
 
-      // Attach identity to socket - available in all handlers below
+      // Attach identity to the socket for the handlers below
       (socket as AuthenticatedSocket).userId = user.id;
       (socket as AuthenticatedSocket).userName = user.name;
       (socket as AuthenticatedSocket).role = user.role;
+
+      // socket.data lets other server code (like fetchSockets) read this too
+      socket.data.userId = user.id;
+      socket.data.userName = user.name;
 
       next();
     } catch {
@@ -45,52 +50,63 @@ export function registerSocketHandlers(io: Server) {
     const authedSocket = socket as AuthenticatedSocket;
     console.log(`Socket connected: ${authedSocket.userName} (${authedSocket.userId})`);
 
-    // JOIN INCIDENT ROOM
-    // Client sends this after connecting to subscribe to a specific incident
+    // ── Join an incident room ──────────────────────────────────
     socket.on("incident:join", async (incidentId: string) => {
-      // Verify this user is actually a responder on this incident
-      const responder = await prisma.incidentResponder.findUnique({
-        where: {
-          incidentId_userId: {
-            incidentId,
-            userId: authedSocket.userId,
-          },
-        },
-      });
+      // Client input is never trusted
+      if (typeof incidentId !== "string") return;
 
-      if (!responder && authedSocket.role !== "ADMIN") {
+      // Same access rule as the REST routes
+      const allowed = await canAccessIncident(
+        authedSocket.userId,
+        authedSocket.role,
+        incidentId
+      );
+
+      if (!allowed) {
         socket.emit("error", { message: "Not authorized to join this incident room" });
         return;
       }
 
-      socket.join(`incident:${incidentId}`);
-      console.log(`${authedSocket.userName} joined room incident:${incidentId}`);
+      const room = `incident:${incidentId}`;
+      socket.join(room);
+      console.log(`${authedSocket.userName} joined room ${room}`);
 
-      // Send full snapshot to the joining client
-      // This is the reconnection safety net - never trust buffered events alone
+      // 1. Full snapshot: the client always starts from the server's truth
       const snapshot = await getIncident(incidentId);
       socket.emit("incident:snapshot", snapshot);
 
-      // Notify others in the room this person is now present
-      socket.to(`incident:${incidentId}`).emit("presence:joined", {
+      // 2. Who is already in the room (so a new arrival sees existing people)
+      const socketsInRoom = await io.in(room).fetchSockets();
+      const here = socketsInRoom.map((s) => ({
+        userId: s.data.userId,
+        userName: s.data.userName,
+      }));
+      socket.emit("presence:list", here);
+
+      // 3. Tell everyone else this person arrived
+      socket.to(room).emit("presence:joined", {
         userId: authedSocket.userId,
         userName: authedSocket.userName,
       });
     });
 
-    // LEAVE INCIDENT ROOM
+    // ── Leave an incident room ─────────────────────────────────
     socket.on("incident:leave", (incidentId: string) => {
-      socket.leave(`incident:${incidentId}`);
-      socket.to(`incident:${incidentId}`).emit("presence:left", {
+      if (typeof incidentId !== "string") return;
+
+      const room = `incident:${incidentId}`;
+      socket.leave(room);
+      socket.to(room).emit("presence:left", {
         userId: authedSocket.userId,
         userName: authedSocket.userName,
       });
     });
 
-    // DISCONNECT - clean up presence from all rooms
-    socket.on("disconnect", () => {
-      console.log(`Socket disconnected: ${authedSocket.userName}`);
-      // Broadcast to all rooms this socket was in
+    // ── Disconnect: clean up presence ──────────────────────────
+    // "disconnecting" (not "disconnect"): at this moment the socket
+    // is still in its rooms, so we know which rooms to notify.
+    socket.on("disconnecting", () => {
+      console.log(`Socket disconnecting: ${authedSocket.userName}`);
       for (const room of socket.rooms) {
         if (room.startsWith("incident:")) {
           socket.to(room).emit("presence:left", {
