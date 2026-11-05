@@ -1,35 +1,67 @@
+// tasks.controller.ts
 import { Request, Response } from "express";
+import { Task } from "@prisma/client";
 import { prisma } from "../../db/prisma";
-import { claimTask } from "./tasks.service";
-import { broadcastToIncident } from "../../realtime/broadcaster"
+import { claimTask, completeTask } from "./tasks.service";
+import { broadcastToIncident } from "../../realtime/broadcaster";
+import { recordTimelineEvent } from "../incidents/timeline.service";
+import { loadActors, toActor } from "../incidents/actors";
+
+// Attach the owner's name so the UI never has to show raw ids
+async function withClaimer(task: Task) {
+  const actors = await loadActors([task.claimedBy]);
+  return { ...task, claimer: toActor(actors, task.claimedBy) };
+}
 
 export async function claimTaskHandler(req: Request, res: Response) {
-  const { taskId } = req.params;
-  const taskIdStr = String(taskId);
+  const taskId = String(req.params.taskId);
   const userId = req.user!.id;
 
-  const winCount = await claimTask(taskIdStr, userId);
+  const winCount = await claimTask(taskId, userId); // 1 = won the race, 0 = lost
+
+  // Read the task AFTER the attempt. Win or lose, this is the server's truth.
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) return res.status(404).json({ error: "Task not found" });
+
+  const taskWithClaimer = await withClaimer(task);
 
   if (winCount === 1) {
-    const task = await prisma.task.findUnique({ where: { id: taskIdStr } });
-    broadcastToIncident(task!.incidentId, "task:claimed", {
-      taskId: taskIdStr,
-      claimedBy: userId,
-      claimedAt: task!.claimedAt,
+    await recordTimelineEvent(task.incidentId, "task.claimed", userId, {
+      taskId,
+      title: task.title,
     });
-    return res.status(200).json({ outcome: "claimed", task });
+    broadcastToIncident(task.incidentId, "task:claimed", { task: taskWithClaimer });
+    return res.status(200).json({ outcome: "claimed", task: taskWithClaimer });
   }
 
-  const currentTask = await prisma.task.findUnique({ where: { id: taskIdStr } });
-
-  if (!currentTask) {
-    return res.status(404).json({ error: "Task not found" });
-  }
-
+  // Lost the race: send back who won so the UI can explain it
   return res.status(409).json({
     outcome: "conflict",
     message: "This task was already claimed.",
-    claimedBy: currentTask.claimedBy,
-    claimedAt: currentTask.claimedAt,
+    task: taskWithClaimer,
   });
+}
+
+export async function completeTaskHandler(req: Request, res: Response) {
+  const taskId = String(req.params.taskId);
+  const userId = req.user!.id;
+
+  const count = await completeTask(taskId, userId);
+
+  if (count === 0) {
+    return res.status(409).json({
+      error: "Only the person who claimed this task can complete it",
+    });
+  }
+
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  const taskWithClaimer = await withClaimer(task!);
+
+  await recordTimelineEvent(task!.incidentId, "task.completed", userId, {
+    taskId,
+    title: task!.title,
+  });
+  broadcastToIncident(task!.incidentId, "task:completed", { task: taskWithClaimer });
+
+  return res.status(200).json({ task: taskWithClaimer });
 }
