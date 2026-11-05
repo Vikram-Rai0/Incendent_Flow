@@ -5,21 +5,23 @@ import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-import { requireAuth } from "./middleware/auth.middleware";
+import { requireAuth, } from "./middleware/auth.middleware";
 import { registerHandler, loginHandler, refreshHandler, logoutHandler } from "./modules/auth/auth.controller";
-import { claimTaskHandler } from "./modules/tasks/tasks.controller";
+import { claimTaskHandler,completeTaskHandler } from "./modules/tasks/tasks.controller";
+import { requireIncidentAccess,requireTaskAccess } from "./middleware/access.middleware";
 import {
   createIncidentHandler,
   getIncidentHandler,
   transitionIncidentHandler,
-  joinIncidentHandler,
   addCommentHandler,
   addDecisionHandler,
   listIncidentsHandler,
   createTaskHandler,
+  addResponderHandler
 } from "./modules/incidents/incidents.controller";
 import { registerSocketHandlers } from "./realtime/socket.handlers";
 import { initBroadcaster } from "./realtime/broadcaster";
+import { getSummaryHandler } from "./modules/incidents/incidents.controller";
 
 
 const clientOrigin = process.env.CLIENT_ORIGIN;
@@ -57,15 +59,18 @@ app.post("/auth/login", loginHandler);
 app.post("/auth/refresh", refreshHandler);
 app.post("/auth/logout", requireAuth, logoutHandler);
 
+
 app.get("/incidents", requireAuth, listIncidentsHandler);
 app.post("/incidents", requireAuth, createIncidentHandler);
-app.get("/incidents/:incidentId", requireAuth, getIncidentHandler);
-app.patch("/incidents/:incidentId/status", requireAuth, transitionIncidentHandler);
-app.post("/incidents/:incidentId/join", requireAuth, joinIncidentHandler);
-app.post("/incidents/:incidentId/comments", requireAuth, addCommentHandler);
-app.post("/incidents/:incidentId/decisions", requireAuth, addDecisionHandler);
-app.post("/incidents/:incidentId/tasks", requireAuth, createTaskHandler);
-app.post("/tasks/:taskId/claim", requireAuth, claimTaskHandler);
+app.get("/incidents/:incidentId", requireAuth, requireIncidentAccess, getIncidentHandler);
+app.patch("/incidents/:incidentId/status", requireAuth, requireIncidentAccess, transitionIncidentHandler);
+app.post("/incidents/:incidentId/responders", requireAuth, requireIncidentAccess, addResponderHandler);
+app.post("/incidents/:incidentId/comments", requireAuth, requireIncidentAccess, addCommentHandler);
+app.post("/incidents/:incidentId/decisions", requireAuth, requireIncidentAccess, addDecisionHandler);
+app.post("/incidents/:incidentId/tasks", requireAuth, requireIncidentAccess, createTaskHandler);
+app.post("/tasks/:taskId/claim", requireAuth, requireTaskAccess, claimTaskHandler);
+app.post("/tasks/:taskId/complete", requireAuth, requireTaskAccess, completeTaskHandler);
+app.get("/incidents/:incidentId/summary", requireAuth, requireIncidentAccess, getSummaryHandler);
 
 // Realtime layer
 // initBroadcaster stores the io instance so service functions can
