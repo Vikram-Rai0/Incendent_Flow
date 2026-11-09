@@ -1,21 +1,33 @@
 // hooks/useIncidentRoom.ts
-// The brain of the incident room
-// Connects Socket.IO, handles all realtime events,
-// and provides actions for the UI components
+// The brain of the incident room.
+// Loads the incident, connects Socket.IO, listens for events,
+// and gives the UI components actions to call.
 
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "@/store/auth.store";
 import { useIncidentStore } from "@/store/incident.store";
 import { getSocket } from "@/lib/socket";
-import { incidentsApi, tasksApi, Incident, Task, Comment, Decision } from "@/lib/api";
+import {
+  incidentsApi,
+  tasksApi,
+  ApiError,
+  Incident,
+  Task,
+  Comment,
+  Decision,
+  TimelineEvent,
+} from "@/lib/api";
 
 export function useIncidentRoom(incidentId: string) {
+  // Why the room could not be opened (null = no problem)
+  const [accessError, setAccessError] = useState<"forbidden" | "notfound" | "error" | null>(null);
+
   const accessToken = useAuthStore((state) => state.accessToken);
   const user = useAuthStore((state) => state.user);
 
-  // Read everything from the incident store
+  // Read state from the incident store
   const incident = useIncidentStore((state) => state.incident);
   const onlineUsers = useIncidentStore((state) => state.onlineUsers);
   const connectionStatus = useIncidentStore((state) => state.connectionStatus);
@@ -27,6 +39,7 @@ export function useIncidentRoom(incidentId: string) {
   const updateTask = useIncidentStore((state) => state.updateTask);
   const addComment = useIncidentStore((state) => state.addComment);
   const addDecision = useIncidentStore((state) => state.addDecision);
+  const addTimelineEvent = useIncidentStore((state) => state.addTimelineEvent);
   const addOnlineUser = useIncidentStore((state) => state.addOnlineUser);
   const removeOnlineUser = useIncidentStore((state) => state.removeOnlineUser);
   const setConnectionStatus = useIncidentStore((state) => state.setConnectionStatus);
@@ -35,106 +48,86 @@ export function useIncidentRoom(incidentId: string) {
   useEffect(() => {
     if (!accessToken) return;
 
-    // ── Step 1: Load initial data via REST ──────────────────────
-    // This gives us data immediately, before Socket.IO even connects
+    // ── Step 1: load the incident over REST ─────────────────────
+    // If the server says 403 or 404, remember why so the page can show a message
     async function loadInitialData() {
+      setAccessError(null);
       try {
         const result = await incidentsApi.get(incidentId);
         setIncident(result.incident);
-
-        // Also join as a responder if not already
-        await incidentsApi.join(incidentId).catch(() => {
-          // Ignore error — already a responder is fine
-        });
       } catch (err) {
-        console.error("Failed to load incident:", err);
+        if (err instanceof ApiError && err.status === 403) setAccessError("forbidden");
+        else if (err instanceof ApiError && err.status === 404) setAccessError("notfound");
+        else setAccessError("error");
       }
     }
 
     loadInitialData();
 
-    // ── Step 2: Connect Socket.IO ────────────────────────────────
+    // ── Step 2: get the socket and define how to join the room ──
     const socket = getSocket(accessToken);
-    socket.connect();
 
-    // ── Step 3: Connection status events ────────────────────────
-    socket.on("connect", () => {
+    const joinRoom = () => {
       setConnectionStatus("live");
-      // Join the incident room on the server
-      // Server will send a fresh snapshot when we join
+      // The server checks access, then sends a fresh snapshot
       socket.emit("incident:join", incidentId);
-    });
+    };
 
-    socket.on("disconnect", () => {
-      setConnectionStatus("reconnecting");
-    });
+    // ── Step 3: connection events ───────────────────────────────
+    socket.on("connect", joinRoom); // also runs again after every reconnect
+    socket.on("disconnect", () => setConnectionStatus("reconnecting"));
+    socket.on("connect_error", () => setConnectionStatus("disconnected"));
 
-    socket.on("connect_error", () => {
-      setConnectionStatus("disconnected");
-    });
-
-    // ── Step 4: Handle incoming events ──────────────────────────
-    // Each event updates only the relevant part of the store
-    // React re-renders only the components that use that slice
-
-    // Full snapshot — received when joining or reconnecting
-    // Replaces all local state with authoritative server state
+    // ── Step 4: events from the server ──────────────────────────
+    // Full snapshot: replaces local state with the server's truth
     socket.on("incident:snapshot", (data: Incident) => {
       setIncident(data);
       setConnectionStatus("live");
     });
 
-    // Status changed by another responder
-    // REPLACE with:
-socket.on("incident:status_changed", (data: {
-  status: Incident["status"];
-}) => {
-  updateStatus(data.status);
-});
-
-    // New task created
-    socket.on("task:created", (data: { task: Task }) => {
-      addTask(data.task);
+    socket.on("incident:status_changed", (data: { status: Incident["status"] }) => {
+      updateStatus(data.status);
     });
 
-    // Task claimed by someone
-    socket.on("task:claimed", (data: {
-      taskId: string;
-      claimedBy: string;
-      claimedAt: string;
-    }) => {
-      updateTask(data.taskId, {
-        status: "CLAIMED",
-        claimedBy: data.claimedBy,
-        claimedAt: data.claimedAt,
-      });
+    socket.on("task:created", (data: { task: Task }) => addTask(data.task));
+
+    // The server sends the full updated task (with the owner's name)
+    socket.on("task:claimed", (data: { task: Task }) => updateTask(data.task.id, data.task));
+    socket.on("task:completed", (data: { task: Task }) => updateTask(data.task.id, data.task));
+
+    socket.on("comment:created", (data: { comment: Comment }) => addComment(data.comment));
+    socket.on("decision:created", (data: { decision: Decision }) => addDecision(data.decision));
+    socket.on("timeline:created", (data: { event: TimelineEvent }) => addTimelineEvent(data.event));
+
+    // Someone was added: reload the incident so the responder list has their name.
+    // Refetching (instead of patching local state) keeps the server authoritative.
+    socket.on("responder:added", () => {
+      incidentsApi
+        .get(incidentId)
+        .then((r) => setIncident(r.incident))
+        .catch(() => { });
     });
 
-    // New comment posted
-    socket.on("comment:created", (data: { comment: Comment }) => {
-      addComment(data.comment);
+    // ── Step 5: presence events ─────────────────────────────────
+    socket.on("presence:list", (list: { userId: string; userName: string }[]) => {
+      list.forEach((u) => addOnlineUser(u));
     });
+    socket.on("presence:joined", (data: { userId: string; userName: string }) => addOnlineUser(data));
+    socket.on("presence:left", (data: { userId: string; userName: string }) => removeOnlineUser(data.userId));
 
-    // New decision logged
-    socket.on("decision:created", (data: { decision: Decision }) => {
-      addDecision(data.decision);
-    });
+    // ── Step 6: connect, or join straight away if already connected ──
+    // The socket is shared across pages. If it is already connected, the
+    // "connect" event will not fire again, so we must join ourselves.
+    if (socket.connected) {
+      joinRoom();
+    } else {
+      socket.connect();
+    }
 
-    // ── Step 5: Presence events ──────────────────────────────────
-    socket.on("presence:joined", (data: { userId: string; userName: string }) => {
-      addOnlineUser(data);
-    });
-
-    socket.on("presence:left", (data: { userId: string; userName: string }) => {
-      removeOnlineUser(data.userId);
-    });
-
-    // ── Step 6: Cleanup when leaving the page ───────────────────
+    // ── Cleanup when leaving the page ───────────────────────────
     return () => {
-      // Tell the server we're leaving this room
       socket.emit("incident:leave", incidentId);
 
-      // Remove all event listeners
       socket.off("connect");
       socket.off("disconnect");
       socket.off("connect_error");
@@ -144,45 +137,52 @@ socket.on("incident:status_changed", (data: {
       socket.off("task:claimed");
       socket.off("comment:created");
       socket.off("decision:created");
+      socket.off("timeline:created");
+      socket.off("responder:added");
+      socket.off("presence:list");
       socket.off("presence:joined");
       socket.off("presence:left");
+      socket.off("task:completed");
 
-      // Reset the store
       reset();
     };
   }, [incidentId, accessToken]);
 
-  // ── Actions ────────────────────────────────────────────────────
-  // These are functions the UI components call when the user does something
+  // ── Actions the UI can call ───────────────────────────────────
+  // None of these update the store directly. The server broadcasts the
+  // change back and the event handlers above update the store.
+  // That is what "the server is authoritative" means in practice.
 
-  const transitionStatus = useCallback(async (newStatus: string) => {
-    await incidentsApi.transition(incidentId, newStatus);
-    // No need to update store here — the broadcast from the server
-    // will trigger "incident:status_changed" which updates the store
-    // This is the "server is authoritative" principle in action
+const transitionStatus = useCallback(async (newStatus: string, note?: string) => {
+  await incidentsApi.transition(incidentId, newStatus, note);
+}, [incidentId]);
+
+  const addResponder = useCallback(async (email: string) => {
+    const result = await incidentsApi.addResponder(incidentId, email);
+    return result.message;
   }, [incidentId]);
 
   const claimTask = useCallback(async (taskId: string) => {
-    // Returns { outcome: "claimed" | "conflict", ... }
     const result = await tasksApi.claim(taskId);
+    // Lost the race? The response holds the server's current version of the task.
+    // Replace our local copy with it, so the screen shows the truth.
+    if (result.outcome === "conflict") updateTask(result.task.id, result.task);
     return result;
-    // Store update happens via the "task:claimed" Socket.IO event
-    // NOT here — we never update state optimistically for claims
+  }, [updateTask]);
+  const completeTask = useCallback(async (taskId: string) => {
+    await tasksApi.complete(taskId); // the store updates via the "task:completed" event
   }, []);
 
   const createTask = useCallback(async (title: string) => {
     await incidentsApi.createTask(incidentId, title);
-    // Store update via "task:created" event
   }, [incidentId]);
 
   const postComment = useCallback(async (body: string) => {
     await incidentsApi.addComment(incidentId, body);
-    // Store update via "comment:created" event
   }, [incidentId]);
 
   const logDecision = useCallback(async (decisionText: string, reason: string) => {
     await incidentsApi.addDecision(incidentId, decisionText, reason);
-    // Store update via "decision:created" event
   }, [incidentId]);
 
   return {
@@ -190,11 +190,14 @@ socket.on("incident:status_changed", (data: {
     incident,
     onlineUsers,
     connectionStatus,
+    accessError,
     currentUserId: user?.id,
 
     // Actions
     transitionStatus,
+    addResponder,
     claimTask,
+    completeTask,
     createTask,
     postComment,
     logDecision,
