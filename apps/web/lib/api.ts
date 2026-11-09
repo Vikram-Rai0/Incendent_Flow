@@ -6,6 +6,17 @@ import { useAuthStore } from "@/store/auth.store";
 // The base URL of our Express backend
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
+// An error that remembers the HTTP status code 
+export class ApiError extends Error {
+    status: number;
+    body: unknown;
+    constructor(message: string, status: number, body?: unknown) {
+        super(message);
+        this.status = status;
+        this.body = body;
+    }
+}
+
 // This function makes every HTTP request
 // It automatically attaches the auth token if we have one
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -30,7 +41,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // throw an error so the calling code knows something went wrong
     if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
+        throw new ApiError(errorBody.error || `Request failed with status ${response.status}`, response.status, errorBody);
     }
 
     return response.json();
@@ -78,15 +89,19 @@ export const incidentsApi = {
             body: JSON.stringify({ title, description, severity }),
         }),
 
-    transition: (id: string, status: string) =>
+    transition: (id: string, status: string, note?: string) =>
         request<{ incident: Incident }>(`/incidents/${id}/status`, {
             method: "PATCH",
-            body: JSON.stringify({ status }),
+            body: JSON.stringify({ status, note }), // note is left out when undefined
         }),
 
-    join: (id: string) =>
-        request<{ message: string }>(`/incidents/${id}/join`, {
+    getSummary: (id: string) =>
+        request<{ summary: IncidentSummary }>(`/incidents/${id}/summary`),
+
+    addResponder: (id: string, email: string) =>
+        request<{ message: string }>(`/incidents/${id}/responders`, {
             method: "POST",
+            body: JSON.stringify({ email }),
         }),
 
     addComment: (id: string, body: string) =>
@@ -109,19 +124,21 @@ export const incidentsApi = {
 };
 
 // ─── Tasks API calls ───────────────────────────────────────────
-
 export const tasksApi = {
-    claim: (taskId: string) =>
-        request<{
-            outcome: "claimed" | "conflict";
-            task?: Task;
-            claimedBy?: string;
-            claimedAt?: string;
-        }>(`/tasks/${taskId}/claim`, {
-            method: "POST",
-        }),
-};
+    claim: async (taskId: string): Promise<ClaimResult> => {
+        try {
+            return await request<ClaimResult>(`/tasks/${taskId}/claim`, { method: "POST" });
+        } catch (err) {
+            // 409 is an EXPECTED outcome (we lost the race), not a failure.
+            // Hand the server's explanation back to the UI instead of throwing.
+            if (err instanceof ApiError && err.status === 409) return err.body as ClaimResult;
+            throw err;
+        }
+    },
 
+    complete: (taskId: string) =>
+        request<{ task: Task }>(`/tasks/${taskId}/complete`, { method: "POST" }),
+};
 // ─── Types (matching the Prisma schema exactly) ────────────────
 export interface ActorInfo {
     name: string;
@@ -151,6 +168,32 @@ export interface Incident {
     timelineEvents: TimelineEvent[];
     responders: Responder[];
     allowedTransitions: IncidentStatus[];
+    resolutionNote: string | null;
+}
+
+export interface IncidentSummary {
+    incidentId: string;
+    title: string;
+    severity: Incident["severity"];
+    status: IncidentStatus;
+    inProgress: boolean;
+    startedAt: string;
+    resolvedAt: string | null;
+    durationMs: number;
+    timeToAcknowledgeMs: number | null;
+    commander: string | null;
+    resolution: string | null;
+    phases: { status: string; durationMs: number }[];
+    counts: { tasks: number; tasksCompleted: number; decisions: number; comments: number };
+    people: {
+        userId: string;
+        name: string;
+        isCommander: boolean;
+        tasksCompleted: number;
+        comments: number;
+        decisions: number;
+    }[];
+    decisions: { decisionText: string; reason: string; madeBy: string | null; createdAt: string }[];
 }
 
 export type IncidentStatus =
@@ -169,8 +212,16 @@ export interface Task {
     status: "UNCLAIMED" | "CLAIMED" | "COMPLETED";
     claimedBy: string | null;
     claimedAt: string | null;
+    completedAt: string | null;
+    claimer: { name: string; role: string } | null;
     version: number;
     createdAt: string;
+}
+
+export interface ClaimResult {
+    outcome: "claimed" | "conflict";
+    task: Task;
+    message?: string;
 }
 
 export interface Comment {
@@ -198,13 +249,14 @@ export interface TimelineEvent {
     incidentId: string;
     type: string;
     actorId: string | null;
+    actor: { name: string; role: string } | null;
     payload: Record<string, unknown> | null;
     createdAt: string;
-    actor?: ActorInfo | null;
 }
 export interface Responder {
     incidentId: string;
     userId: string;
     joinedAt: string;
     leftAt: string | null;
+    user: { id: string; name: string; email: string };
 }
