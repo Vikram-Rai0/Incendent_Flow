@@ -17,10 +17,10 @@ interface IncidentState {
   // Who is currently online in this room
   onlineUsers: PresenceUser[];
 
-  // Connection status — shown in the UI
+  // Connection status â€” shown in the UI
   connectionStatus: "connecting" | "live" | "reconnecting" | "disconnected";
 
-  // Actions — called by the useIncidentRoom hook
+  // Actions â€” called by the useIncidentRoom hook
   setIncident: (incident: Incident) => void;
  updateStatus: (status: Incident["status"]) => void;
   addTask: (task: Task) => void;
@@ -90,14 +90,18 @@ export const useIncidentStore = create<IncidentState>((set) => ({
 
   // Add a new timeline event
   addTimelineEvent: (event) =>
-    set((state) => ({
-      incident: state.incident
-        ? {
-          ...state.incident,
-          timelineEvents: [...state.incident.timelineEvents, event],
-        }
-        : null,
-    })),
+  set((state) => {
+    if (!state.incident) return {};
+    // Skip if we already have this event (snapshot + live event overlap)
+    const alreadyHave = state.incident.timelineEvents.some((e) => e.id === event.id);
+    if (alreadyHave) return {};
+    return {
+      incident: {
+        ...state.incident,
+        timelineEvents: [...state.incident.timelineEvents, event],
+      },
+    };
+  }),
 
   // Someone came online
   addOnlineUser: (user) =>
