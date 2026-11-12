@@ -81,15 +81,11 @@ const actors = await loadActors([
 export async function transitionIncident(
   incidentId: string,
   toStatus: IncidentStatus,
-  actorId: string
+  actorId: string,
+  note?: string
 ) {
-  const incident = await prisma.incident.findUnique({
-    where: { id: incidentId },
-  });
-
-  if (!incident) {
-    return { outcome: "not_found" as const };
-  }
+  const incident = await prisma.incident.findUnique({ where: { id: incidentId } });
+  if (!incident) return { outcome: "not_found" as const };
 
   if (!isValidTransition(incident.status, toStatus)) {
     return {
@@ -100,39 +96,55 @@ export async function transitionIncident(
     };
   }
 
-  // The status change and its timeline entry must succeed or fail together,
-  // so they stay in one transaction (this is why we don't use recordTimelineEvent here).
-  const [updated, timelineEvent] = await prisma.$transaction([
-    prisma.incident.update({
-      where: { id: incidentId },
+  // Resolving must explain HOW it was resolved. The server enforces this,
+  // so the rule holds even if someone bypasses the frontend dialog.
+  const resolving = toStatus === "RESOLVED";
+  const cleanNote = note?.trim();
+  if (resolving && (!cleanNote || cleanNote.length < 10)) {
+    return { outcome: "note_required" as const };
+  }
+
+  // One transaction: the status change and its timeline entry succeed or fail together.
+  const saved = await prisma.$transaction(async (tx) => {
+    // Change the status only if it is STILL what we read a moment ago.
+    // If someone else changed it in between, count is 0 and we stop.
+    const changed = await tx.incident.updateMany({
+      where: { id: incidentId, status: incident.status },
       data: {
         status: toStatus,
-        resolvedAt: toStatus === "RESOLVED" ? new Date() : undefined,
+        resolvedAt: resolving ? new Date() : undefined,
+        resolutionNote: resolving ? cleanNote : undefined,
       },
-    }),
-    prisma.timelineEvent.create({
+    });
+    if (changed.count === 0) return null;
+
+    const event = await tx.timelineEvent.create({
       data: {
         incidentId,
         type: "incident.status_changed",
         actorId,
-        payload: { from: incident.status, to: toStatus },
+        payload: {
+          from: incident.status,
+          to: toStatus,
+          ...(resolving ? { note: cleanNote } : {}),
+        },
       },
-    }),
-  ]);
+    });
+    const updated = await tx.incident.findUniqueOrThrow({ where: { id: incidentId } });
+    return { event, updated };
+  });
 
-  // Same shape as the snapshot: the event carries the actor's name and role
-  const eventWithActor = await withActor(timelineEvent, incident.commanderId);
+  if (!saved) return { outcome: "conflict" as const };
+
+  const eventWithActor = await withActor(saved.event, incident.commanderId);
   broadcastToIncident(incidentId, "timeline:created", { event: eventWithActor });
-
-  // This is the event that updates the status pill in everyone's window
   broadcastToIncident(incidentId, "incident:status_changed", {
     incidentId,
     status: toStatus,
     actorId,
   });
 
-  return { outcome: "success" as const, incident: updated };
-  
+  return { outcome: "success" as const, incident: saved.updated };
 }
 
 export async function addResponder(incidentId: string, actorId: string, email: string) {
