@@ -1,31 +1,42 @@
+// TaskList.tsx
+// Investigation tasks. Shows who owns what, handles claim conflicts.
+
 "use client";
 
 import { useState } from "react";
-import { Task } from "@/lib/api";
+import { Check } from "lucide-react";
+import { Task, ClaimResult } from "@/lib/api";
 
 interface Props {
   tasks: Task[];
   currentUserId: string | undefined;
-  onClaimTask: (taskId: string) => Promise<{
-    outcome: "claimed" | "conflict";
-    task?: Task;
-    claimedBy?: string;
-    claimedAt?: string;
-  }>;
+  onClaimTask: (taskId: string) => Promise<ClaimResult>;
+  onCompleteTask: (taskId: string) => Promise<void>;
   onCreateTask: (title: string) => Promise<void>;
 }
 
-export function TaskList({ tasks, currentUserId, onClaimTask, onCreateTask }: Props) {
+// "just now", "20 seconds ago", "3 min ago"
+function timeAgo(dateString: string | null) {
+  if (!dateString) return "a moment ago";
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(dateString).getTime()) / 1000));
+  if (secs < 10) return "just now";
+  if (secs < 60) return `${secs} seconds ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  return `${Math.floor(mins / 60)}h ago`;
+}
+
+export function TaskList({ tasks, currentUserId, onClaimTask, onCompleteTask, onCreateTask }: Props) {
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [addingTask, setAddingTask] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
-  const done = tasks.filter((t) => t.status === "COMPLETED").length;
+  const doneCount = tasks.filter((t) => t.status === "COMPLETED").length;
 
-  async function handleCreateTask(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-    setAddingTask(true);
+    setAdding(true);
     try {
       await onCreateTask(newTaskTitle.trim());
       setNewTaskTitle("");
@@ -33,68 +44,71 @@ export function TaskList({ tasks, currentUserId, onClaimTask, onCreateTask }: Pr
     } catch (err) {
       console.error("Failed to create task:", err);
     } finally {
-      setAddingTask(false);
+      setAdding(false);
     }
   }
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-white">Investigation</h2>
-        <div className="flex items-center gap-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-[15px] font-semibold text-foreground">Investigation</h2>
+        <div className="flex items-center gap-3">
+          <span className="tnum text-xs text-muted-foreground">
+            {doneCount}/{tasks.length} complete
+          </span>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            className="text-xs font-medium text-primary transition-opacity hover:opacity-80"
           >
             + Add task
           </button>
-          <span className="text-xs text-gray-500">
-            {done}/{tasks.length} complete
-          </span>
         </div>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleCreateTask} className="mb-4 flex gap-2">
-          <input
-            type="text"
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            placeholder="e.g. Check database connection pool"
-            autoFocus
-            className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={addingTask}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
-          >
-            Add
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowForm(false)}
-            className="px-3 py-2 text-gray-400 hover:text-white text-sm transition-colors"
-          >
-            Cancel
-          </button>
-        </form>
-      )}
+      <div className="overflow-hidden rounded-xl border border-border bg-card soft-shadow">
+        {showForm && (
+          <form onSubmit={handleCreate} className="flex gap-2 border-b border-border p-3">
+            <input
+              type="text"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="e.g. Check database connection pool"
+              autoFocus
+              className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={adding}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </form>
+        )}
 
-      <div className="bg-gray-900/60 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden">
         {tasks.length === 0 ? (
-          <p className="text-gray-600 text-sm text-center py-8">
-            No tasks yet — add one to start investigating
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No tasks yet. Add one to start investigating.
           </p>
         ) : (
-          tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              currentUserId={currentUserId}
-              onClaim={onClaimTask}
-            />
-          ))
+          <div className="divide-y divide-border">
+            {tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                currentUserId={currentUserId}
+                onClaim={onClaimTask}
+                onComplete={onCompleteTask}
+              />
+            ))}
+          </div>
         )}
       </div>
     </section>
@@ -105,87 +119,111 @@ function TaskCard({
   task,
   currentUserId,
   onClaim,
+  onComplete,
 }: {
   task: Task;
   currentUserId: string | undefined;
   onClaim: Props["onClaimTask"];
+  onComplete: Props["onCompleteTask"];
 }) {
-  const [claiming, setClaiming] = useState(false);
-  const [conflict, setConflict] = useState<{
-    claimedBy: string;
-    claimedAt: string;
-  } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const isClaimedByMe = task.claimedBy === currentUserId;
+  // Set when we lose a claim race. Explains exactly what happened.
+  const [conflict, setConflict] = useState<{ name: string; claimedAt: string | null } | null>(null);
+
+  const isUnclaimed = task.status === "UNCLAIMED";
   const isClaimed = task.status === "CLAIMED";
-  const isCompleted = task.status === "COMPLETED";
+  const isDone = task.status === "COMPLETED";
+  const isMine = task.claimedBy === currentUserId;
+  const ownerName = task.claimer?.name ?? "Someone";
 
   async function handleClaim() {
-    setClaiming(true);
+    setBusy(true);
     setConflict(null);
     try {
       const result = await onClaim(task.id);
       if (result.outcome === "conflict") {
         setConflict({
-          claimedBy: result.claimedBy!,
-          claimedAt: result.claimedAt!,
+          name: result.task.claimer?.name ?? "Someone",
+          claimedAt: result.task.claimedAt,
         });
       }
-      // On success, the Socket.IO "task:claimed" event updates the store
+      // On success the "task:claimed" event updates the store for everyone
     } catch (err) {
       console.error("Claim failed:", err);
     } finally {
-      setClaiming(false);
+      setBusy(false);
     }
   }
 
-  const subtitle = isCompleted
-    ? "Completed"
-    : isClaimed
-    ? isClaimedByMe
-      ? "Claimed by you"
-      : `Claimed by ${task.claimedBy?.slice(0, 8)}…`
-    : "Unclaimed";
+  async function handleComplete() {
+    setBusy(true);
+    try {
+      await onComplete(task.id);
+    } catch (err) {
+      console.error("Complete failed:", err);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="px-5 py-4">
+    <div className="px-4 py-3">
       <div className="flex items-center gap-3">
-        {/* Status icon */}
-        <div className="shrink-0">
-          {isCompleted ? (
-            <span className="flex w-5 h-5 items-center justify-center text-green-400 text-sm">✓</span>
+        {/* Status marker: done = check, claimed = ring with dot, unclaimed = empty ring */}
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center" aria-hidden>
+          {isDone ? (
+            <Check className="h-4 w-4 text-ok" />
           ) : isClaimed ? (
-            <span className="block w-5 h-5 rounded-full border-2 border-orange-400" />
+            <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-sev2">
+              <span className="h-1 w-1 rounded-full bg-sev2" />
+            </span>
           ) : (
-            <span className="block w-5 h-5 rounded-full border-2 border-gray-600" />
+            <span className="h-4 w-4 rounded-full border-2 border-muted-foreground/50" />
           )}
-        </div>
+        </span>
 
-        {/* Title + subtitle */}
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm ${isCompleted ? "line-through text-gray-500" : "text-white"}`}>
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm ${isDone ? "text-muted-foreground line-through" : "text-foreground"}`}>
             {task.title}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+          {isUnclaimed && <p className="mt-0.5 text-xs text-muted-foreground">Unclaimed</p>}
+          {isClaimed && (
+            <p className={`mt-0.5 text-xs ${isMine ? "text-primary" : "text-sev3"}`}>
+              {isMine ? "You are investigating this" : `${ownerName} is investigating this`}
+            </p>
+          )}
+          {isDone && <p className="mt-0.5 text-xs text-muted-foreground">Done by {ownerName}</p>}
         </div>
 
-        {/* Claim button */}
-        {!isClaimed && !isCompleted && (
+        {isUnclaimed && (
           <button
             onClick={handleClaim}
-            disabled={claiming}
-            className="shrink-0 text-xs px-4 py-1.5 bg-gray-950 hover:bg-gray-800 disabled:opacity-50 text-white border border-gray-700 rounded-lg transition-colors"
+            disabled={busy}
+            className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
           >
-            {claiming ? "Claiming..." : "Claim"}
+            {busy ? "Claiming..." : "Claim"}
+          </button>
+        )}
+
+        {/* Only the owner sees this. The server enforces it too. */}
+        {isClaimed && isMine && (
+          <button
+            onClick={handleComplete}
+            disabled={busy}
+            className="shrink-0 rounded-md border border-ok/30 bg-ok/10 px-3 py-1 text-xs font-medium text-ok transition-colors hover:bg-ok/20 disabled:opacity-50"
+          >
+            {busy ? "Saving..." : "Mark done"}
           </button>
         )}
       </div>
 
       {conflict && (
-        <div className="mt-3 p-3 bg-orange-950/60 border border-orange-800 rounded-lg text-xs text-orange-400">
+        <div className="ml-8 mt-2 rounded-md border border-sev2/30 bg-sev2/10 p-2 text-xs text-sev2">
           <strong>Task already claimed</strong>
           <br />
-          Someone else claimed this task just before you. The workspace has been synchronized.
+          {conflict.name} claimed this task {timeAgo(conflict.claimedAt)}. The workspace has been
+          synchronized.
         </div>
       )}
     </div>
