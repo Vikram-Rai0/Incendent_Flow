@@ -3,3 +3,16 @@ dist/
 .env
 .env.local
 *.log
+# personal notes and scratch files
+note/
+apps/web/share.txt
+apps/web/hooks/useAuth.txt
+apps/web/app/login/SystemDesignlogin.txt
+apps/web/app/incidents/new/page.txt
+
+# personal notes and scratch files
+note/
+apps/web/share.txt
+apps/web/hooks/useAuth.txt
+apps/web/app/login/SystemDesignlogin.txt
+apps/web/app/incidents/new/page.txt
