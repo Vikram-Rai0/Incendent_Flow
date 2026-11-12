@@ -29,66 +29,67 @@ enum Severity {
   SEV4
 }
 
-model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         Role     @default(RESPONDER)
-  timelineEvents TimelineEvent[]
-  incidentResponders IncidentResponder[]
-  tokenVersion Int      @default(0)
-  createdAt    DateTime @default(now())
-}
-
-model Incident {
-  id           String         @id @default(uuid())
-  title        String
-  description  String
-  severity     Severity
-  status       IncidentStatus @default(DETECTED)
-  commanderId  String?
-  createdBy    String
-  createdAt    DateTime       @default(now())
-  resolvedAt   DateTime?
-  tasks        Task[]
-  responders   IncidentResponder[]
-  comments     Comment[]
-  decisions    Decision[]
-  timelineEvents TimelineEvent[]
-}
-
-
 enum TaskStatus {
   UNCLAIMED
   CLAIMED
   COMPLETED
 }
 
-model Task {
-  id         String     @id @default(uuid())
-  incidentId String
-  incident   Incident   @relation(fields: [incidentId], references: [id])
-  title      String
-  status     TaskStatus @default(UNCLAIMED)
-  claimedBy  String?
-  claimedAt  DateTime?
-  completedAt DateTime?
-  version    Int        @default(0)
-  createdAt  DateTime   @default(now())
+model User {
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  passwordHash       String
+  name               String
+  role               Role                @default(RESPONDER)
+  tokenVersion       Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  timelineEvents     TimelineEvent[]
+  incidentResponders IncidentResponder[]
 }
 
+model Incident {
+  id             String              @id @default(uuid())
+  title          String
+  description    String
+  severity       Severity
+  status         IncidentStatus      @default(DETECTED)
+  commanderId    String?
+  createdBy      String
+  createdAt      DateTime            @default(now())
+  resolvedAt     DateTime?
+  resolutionNote String?
+  tasks          Task[]
+  responders     IncidentResponder[]
+  comments       Comment[]
+  decisions      Decision[]
+  timelineEvents TimelineEvent[]
+}
 
+model Task {
+  id          String     @id @default(uuid())
+  incidentId  String
+  incident    Incident   @relation(fields: [incidentId], references: [id])
+  title       String
+  status      TaskStatus @default(UNCLAIMED)
+  claimedBy   String?
+  claimedAt   DateTime?
+  completedAt DateTime?
+  version     Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@index([incidentId])
+}
 
 model IncidentResponder {
   incidentId String
   incident   Incident  @relation(fields: [incidentId], references: [id])
   userId     String
-  user       User      @relation(fields: [userId], references: [id])   // NEW
+  user       User      @relation(fields: [userId], references: [id])
   joinedAt   DateTime  @default(now())
   leftAt     DateTime?
 
   @@id([incidentId, userId])
+  @@index([userId])
 }
 
 model Comment {
@@ -98,6 +99,8 @@ model Comment {
   userId     String
   body       String
   createdAt  DateTime @default(now())
+
+  @@index([incidentId])
 }
 
 model Decision {
@@ -109,6 +112,8 @@ model Decision {
   reason       String
   status       String   @default("APPROVED")
   createdAt    DateTime @default(now())
+
+  @@index([incidentId])
 }
 
 model TimelineEvent {
@@ -117,7 +122,9 @@ model TimelineEvent {
   incident   Incident @relation(fields: [incidentId], references: [id])
   type       String
   actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id])  // NEW
+  actor      User?    @relation(fields: [actorId], references: [id])
   payload    Json?
   createdAt  DateTime @default(now())
+
+  @@index([incidentId, createdAt])
 }
