@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+note/
+apps/web/share.txt
+apps/web/hooks/useAuth.txt
+apps/web/app/login/SystemDesignlogin.txt
+apps/web/app/incidents/new/page.txt
